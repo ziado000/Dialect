@@ -3,10 +3,9 @@ import requests
 import os
 
 MODEL_ID = "ziadabdullah/saudi-dialect-translator"
-# Updated to Hugging Face's active router URL
 API_URL = f"https://router.huggingface.co/hf-inference/models/{MODEL_ID}"
 
-# Optional: Add your HF token to environment variables in Render dashboard if needed
+# Optional: Add your HF token in Render Environment Variables as HF_TOKEN
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
 
 def translate(text):
@@ -24,19 +23,23 @@ def translate(text):
     try:
         response = requests.post(API_URL, json=payload, headers=headers, timeout=30)
         
-        if response.status_code == 404:
-            return f"Error 404: Model endpoint not found on HF router. Verify '{MODEL_ID}' status."
+        # Check if HF returned non-200 status
+        if response.status_code != 200:
+            return f"HF API Status {response.status_code}: {response.text}"
             
-        result = response.json()
-        
-        # Handle server warm-up/cold start
+        try:
+            result = response.json()
+        except Exception:
+            return f"Non-JSON response received: {response.text[:200]}"
+            
+        # Handle model cold start / loading state
         if isinstance(result, dict) and "error" in result:
             if "loading" in str(result["error"]).lower():
                 est = result.get("estimated_time", 20)
-                return f"⏳ Model is warming up on HF (~{int(est)}s). Please click Translate again!"
+                return f"⏳ Model is warming up on HF (~{int(est)}s). Please click Translate again in a few seconds!"
             return f"API Error: {result['error']}"
             
-        # Parse output formats
+        # Parse standard seq2seq translation output
         if isinstance(result, list) and len(result) > 0:
             if "translation_text" in result[0]:
                 return result[0]["translation_text"]
@@ -48,7 +51,7 @@ def translate(text):
     except Exception as e:
         return f"Request Exception: {str(e)}"
 
-# Gradio Interface
+# UI Layout
 with gr.Blocks() as demo:
     gr.Markdown(
         """
