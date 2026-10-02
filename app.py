@@ -94,6 +94,8 @@ with gr.Blocks() as demo:
     
     translate_btn.click(fn=translate, inputs=input_text, outputs=output_text)
 
-# Launch
-print("Launching demo...")
-demo.launch()
+# Launch with environment port binding for Render
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 7860))
+    print(f"Launching demo on port {port}...")
+    demo.launch(server_name="0.0.0.0", server_port=port)
