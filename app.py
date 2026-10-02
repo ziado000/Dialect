@@ -3,26 +3,40 @@ import requests
 import os
 
 MODEL_ID = "ziadabdullah/saudi-dialect-translator"
-API_URL = f"https://api-inference.huggingface.co/models/{MODEL_ID}"
+# Updated to Hugging Face's active router URL
+API_URL = f"https://router.huggingface.co/hf-inference/models/{MODEL_ID}"
+
+# Optional: Add your HF token to environment variables in Render dashboard if needed
+HF_TOKEN = os.environ.get("HF_TOKEN", "")
 
 def translate(text):
     if not text.strip():
         return ""
     
     payload = {"inputs": text}
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Content-Type": "application/json"
+    }
+    if HF_TOKEN:
+        headers["Authorization"] = f"Bearer {HF_TOKEN}"
     
     try:
-        response = requests.post(API_URL, json=payload, timeout=30)
+        response = requests.post(API_URL, json=payload, headers=headers, timeout=30)
+        
+        if response.status_code == 404:
+            return f"Error 404: Model endpoint not found on HF router. Verify '{MODEL_ID}' status."
+            
         result = response.json()
         
-        # If model is waking up (cold start)
+        # Handle server warm-up/cold start
         if isinstance(result, dict) and "error" in result:
-            if "loading" in result["error"].lower():
-                estimated_time = result.get("estimated_time", 20)
-                return f"⏳ Model is warming up on HF servers (~{int(estimated_time)}s). Please click Translate again in a moment!"
+            if "loading" in str(result["error"]).lower():
+                est = result.get("estimated_time", 20)
+                return f"⏳ Model is warming up on HF (~{int(est)}s). Please click Translate again!"
             return f"API Error: {result['error']}"
             
-        # Parse output for translation models
+        # Parse output formats
         if isinstance(result, list) and len(result) > 0:
             if "translation_text" in result[0]:
                 return result[0]["translation_text"]
@@ -34,7 +48,7 @@ def translate(text):
     except Exception as e:
         return f"Request Exception: {str(e)}"
 
-# UI Layout
+# Gradio Interface
 with gr.Blocks() as demo:
     gr.Markdown(
         """
