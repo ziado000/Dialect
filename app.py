@@ -1,61 +1,19 @@
-import gradio as gr
-from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-import torch
-import asyncio
 import os
-import sys
+import gradio as gr
+from huggingface_hub import InferenceClient
 
-# Filter out harmless system errors from logs
-class StderrFilter:
-    def __init__(self, original_stderr):
-        self.original_stderr = original_stderr
-
-    def write(self, s):
-        # Filter out the specific asyncio error
-        if "Invalid file descriptor" in s or "BaseEventLoop.__del__" in s:
-            return
-        self.original_stderr.write(s)
-
-    def flush(self):
-        self.original_stderr.flush()
-
-# Apply the filter
-sys.stderr = StderrFilter(sys.stderr)
-
-# Load the trained model
-model_path = "ziadabdullah/saudi-dialect-translator"
-print(f"⏳ Loading model from: {model_path}")
-try:
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_path)
-    print("✅ Model loaded successfully!")
-except Exception as e:
-    print(f"❌ Error loading model: {e}")
-    print("⚠️ Make sure you unzipped the model correctly!")
-    exit()
-
-# Move to GPU if available
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model = model.to(device)
+# Uses Hugging Face's free serverless inference API
+client = InferenceClient(model="ziadabdullah/saudi-dialect-translator")
 
 def translate(text):
-    inputs = tokenizer(text, return_tensors="pt").to(device)
-    
-    # Force Arabic output token
-    forced_bos_token_id = tokenizer.convert_tokens_to_ids("arb_Arab")
-    
-    outputs = model.generate(
-        **inputs,
-        forced_bos_token_id=forced_bos_token_id,
-        max_length=128,
-        num_beams=5,
-        early_stopping=True
-    )
-    
-    translation = tokenizer.decode(outputs[0], skip_special_tokens=True)
-    return translation
+    if not text.strip():
+        return ""
+    try:
+        response = client.text_generation(text, max_new_tokens=128)
+        return response
+    except Exception as e:
+        return f"Error: {str(e)}"
 
-# Create the Web UI
 with gr.Blocks() as demo:
     gr.Markdown(
         """
@@ -80,7 +38,6 @@ with gr.Blocks() as demo:
                 interactive=False
             )
             
-    # Examples
     gr.Examples(
         examples=[
             ["Hello, how are you?"],
@@ -94,8 +51,7 @@ with gr.Blocks() as demo:
     
     translate_btn.click(fn=translate, inputs=input_text, outputs=output_text)
 
-# Launch with environment port binding for Render
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 7860))
-    print(f"Launching demo on port {port}...")
+    print(f"Launching lightweight demo on port {port}...")
     demo.launch(server_name="0.0.0.0", server_port=port)
